@@ -1,0 +1,98 @@
+---
+type: service_template
+subtype: workflow
+name: main_workflow
+inputs:
+  parameters:
+    commit:
+      default: "%%session.commit%%"
+    repo:
+      default: "%%session.repo%%"
+    browser:
+      default: "chrome"
+steps:
+- checkout:
+    template: "axscm-checkout"
+- test:
+    template: test_workflow
+    parameters:
+      code: "%%steps.checkout.code%%"
+
+---
+type: service_template
+subtype: workflow
+name: test_workflow
+inputs:
+  artifacts:
+  - from: "%%code%%"
+    path: "/src"
+  parameters:
+    code:
+    browser:
+fixtures:
+- selenium:
+    template: "selenium_server"
+- app:
+    template: "app"
+steps:
+- e2e_test:
+    template: "e2e_test"
+    parameters:
+      selenium_ip: "%%fixtures.selenium.ip%%"
+      app_ip:  "%%fixtures.app.ip%%"
+
+---
+type: service_template
+subtype: container
+name: e2e_test
+inputs:
+  artifacts:
+  - from: "%%code%%"
+    path: "/src"
+  parameters:
+    code:
+    selenium_ip:
+    app_ip:
+    browser:
+container:
+  resources:
+    mem_mib: 2048
+    cpu_cores: 0.4
+    disk_gb: 2
+  image: python:3.5.2
+  docker_options: '-e "APP_URL=http://%%app_ip%%:8000/index.html"'
+  command: sh -c 'pip3 install selenium && pip3 install pytest && pytest -vv /src/test.py --remote %%selenium_ip%% --browser %%browser%% --capture=no'
+
+---
+type: service_template
+subtype: container
+name: app
+inputs:
+  parameters:
+    code:
+    browser:
+      default: "chrome"
+  artifacts:
+  - from: "%%code%%"
+    path: "/src"
+container:
+  resources:
+    mem_mib: 1024
+    cpu_cores: 0.1
+  image: python:3.5.2
+  command: sh -c 'cd /src && python -m http.server 8000'
+
+---
+type: service_template
+subtype: container
+name: selenium_server
+description: Base selenium container for selenium firefox and chrome
+inputs:
+  parameters:
+    browser:
+      default: "chrome"
+container:
+  resources:
+    mem_mib: 1024
+    cpu_cores: 0.1
+  image: "selenium/standalone-%%browser%%:latest"
