@@ -9,14 +9,32 @@ inputs:
     repo:
       default: "%%session.repo%%"
     browser:
-      default: "chrome"
+      default: $$[chrome,firefox]$$
 steps:
 - checkout:
     template: "axscm-checkout"
-- test:
-    template: test_workflow
+- test_with_video:
+    template: test_video_workflow
     parameters:
       code: "%%steps.checkout.code%%"
+
+---
+type: service_template
+subtype: workflow
+name: test_video_workflow
+inputs:
+  parameters:
+    code:
+    browser:
+steps:
+- test:
+    template: test_workflow
+- convert:
+    template: axvideo-converter
+    flags:
+      always_run: true
+    parameters:
+      video_input: "%%steps.test.video%%"
 
 ---
 type: service_template
@@ -34,12 +52,21 @@ fixtures:
     template: "selenium_server"
 - app:
     template: "app"
+- vnc_recorder:
+    template: vnc-recorder
+    parameters:
+      remote: "%%fixtures.selenium.ip%%"
+      output: "/tmp/video.flv"
 steps:
 - e2e_test:
     template: "e2e_test"
     parameters:
       selenium_ip: "%%fixtures.selenium.ip%%"
       app_ip:  "%%fixtures.app.ip%%"
+outputs:
+  artifacts:
+    video:
+      from: "%%fixtures.vnc_recorder.video%%"
 
 ---
 type: service_template
@@ -61,7 +88,13 @@ container:
     disk_gb: 2
   image: python:3.5.2
   docker_options: '-e "APP_URL=http://%%app_ip%%:8000/index.html"'
-  command: sh -c 'pip3 install selenium && pip3 install pytest && pytest -vv /src/test.py --remote %%selenium_ip%% --browser %%browser%% --capture=no'
+  command: sh -c 'pip3 install -r /src/tests/requirements.txt && mkdir -p /tmp/report && pytest --html=/tmp/report/index.html -vv /src/tests/test.py --remote %%selenium_ip%% --browser %%browser%% --capture=no'
+outputs:
+  artifacts:
+    report:
+      path: "/tmp/report"
+      meta_data:
+      - browsable
 
 ---
 type: service_template
@@ -70,8 +103,6 @@ name: app
 inputs:
   parameters:
     code:
-    browser:
-      default: "chrome"
   artifacts:
   - from: "%%code%%"
     path: "/src"
@@ -80,7 +111,7 @@ container:
     mem_mib: 1024
     cpu_cores: 0.1
   image: python:3.5.2
-  command: sh -c 'cd /src && python -m http.server 8000'
+  command: sh -c 'cd /src/app && python -m http.server 8000'
 
 ---
 type: service_template
@@ -90,9 +121,8 @@ description: Base selenium container for selenium firefox and chrome
 inputs:
   parameters:
     browser:
-      default: "chrome"
 container:
   resources:
     mem_mib: 1024
     cpu_cores: 0.1
-  image: "selenium/standalone-%%browser%%:latest"
+  image: "selenium/standalone-%%browser%%-debug:latest"

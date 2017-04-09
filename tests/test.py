@@ -3,6 +3,7 @@
 import logging
 import sys
 import os
+import time
 
 import pytest
 
@@ -18,4 +19,9 @@ def test_page_title(driver):
     driver.get(os.environ['APP_URL'])
     logger.info('Test page title')
     assert 'Example' in driver.title
+    time.sleep(5)
+
+    driver.find_element_by_css_selector('#myBtn').click()
+    time.sleep(5)
+
     logger.info('Test Pass')
